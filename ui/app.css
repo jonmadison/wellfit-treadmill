@@ -1,0 +1,131 @@
+:root {
+  color-scheme: dark;
+  --bg: #14161a;
+  --panel: #1b1f25;
+  --line: #2a3037;
+  --text: #e6e8eb;
+  --dim: #9aa3ad;
+  --blue: #2f6feb;
+  --red: #d13b3b;
+  --green: #3fa66a;
+}
+
+* { box-sizing: border-box; }
+
+/* Author rules that set `display` (.metric, .goal-alert) beat the UA
+   stylesheet's [hidden] rule, which would leave hidden elements visible. */
+[hidden] { display: none !important; }
+
+/* Sized for a narrow always-on-top window that sits over other apps, so
+   everything is a step smaller than the standalone browser version was. */
+body {
+  margin: 0 auto; padding: 10px 12px; max-width: 560px;
+  background: var(--bg); color: var(--text);
+  font: 12px/1.45 system-ui, -apple-system, sans-serif;
+  -webkit-user-select: none; user-select: none;
+}
+
+header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+h1 { font-size: 12px; margin: 0; letter-spacing: .04em; color: var(--dim); text-transform: uppercase; }
+.conn { display: flex; align-items: center; gap: 6px; }
+
+.pill {
+  font-size: 10px; padding: 2px 7px; border-radius: 999px;
+  background: #262c34; color: var(--dim); white-space: nowrap;
+}
+.pill.on { background: #1d3a2a; color: #7ddba3; }
+.pill.err { background: #3a1f1f; color: #f0a3a3; }
+
+button {
+  font: inherit; padding: 6px 11px; border-radius: 6px;
+  border: 1px solid var(--line); background: #232830; color: var(--text);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+button:hover:not(:disabled) { background: #2c323c; }
+button:disabled { opacity: .35; cursor: default; }
+button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+button.ghost { background: none; border: none; color: var(--dim); font-size: 11px; padding: 3px 5px; }
+button.ghost:hover { color: var(--text); background: none; }
+
+.safety {
+  border-left: 2px solid #e0a33e; background: #26221a;
+  padding: 6px 9px; margin: 8px 0; font-size: 10.5px; line-height: 1.35; color: #f0d9a8;
+}
+
+.metrics {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 8px 0;
+}
+.metric {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
+  padding: 6px 9px; display: flex; flex-direction: column; gap: 0;
+}
+.metric.big { grid-column: 1 / -1; }
+.metric .label { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: .07em; }
+.metric .value { font-size: 17px; font-variant-numeric: tabular-nums; line-height: 1.15; }
+/* Speed is the one number worth reading from across the room. */
+.metric.big .value { font-size: 34px; }
+.metric .unit { font-size: 9.5px; color: var(--dim); }
+
+.speed { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 8px 9px; }
+.speed-head { display: flex; align-items: center; justify-content: space-between; }
+.speed-head .label { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: .07em; }
+.speed-row { display: flex; align-items: center; gap: 8px; margin: 2px 0 4px; }
+/* Kept generously tappable: these get pressed while walking. */
+.speed-row .step {
+  width: 40px; height: 40px; font-size: 19px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.target { flex: 1; text-align: center; }
+.target span:first-child { font-size: 22px; font-variant-numeric: tabular-nums; }
+.range-hint { font-size: 9.5px; color: var(--dim); margin-top: 2px; text-align: center; }
+
+.picker {
+  background: var(--panel); border: 1px solid var(--blue);
+  border-radius: 7px; padding: 8px 9px; margin: 8px 0;
+}
+.picker-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.picker-list button {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  width: 100%; text-align: left; padding: 7px 9px;
+}
+.picker-list .dev-name { font-size: 12px; }
+.picker-list .dev-meta { font-size: 9.5px; color: var(--dim); white-space: nowrap; }
+.picker-list .ftms { color: #7ddba3; }
+.picker-empty { font-size: 10.5px; color: var(--dim); padding: 4px 0; }
+
+.goal {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 7px; padding: 8px 9px; margin-top: 6px;
+}
+.goal.done { border-color: var(--green); }
+
+.goal-alert {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 8px 0 0; padding: 8px 10px; border-radius: 7px;
+  background: #1d3a2a; border: 1px solid var(--green); color: #b6f0cd;
+  font-size: 11.5px; animation: pulse 1.4s ease-in-out infinite;
+}
+.goal-alert button { color: #b6f0cd; }
+@keyframes pulse { 0%, 100% { background: #1d3a2a; } 50% { background: #26543a; } }
+
+.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+.controls button { padding: 9px; font-size: 12.5px; }
+/* Stop stays full-width and visually dominant even at this size. */
+.controls .stop {
+  grid-column: 1 / -1; background: var(--red); border-color: var(--red);
+  color: #fff; font-weight: 600; letter-spacing: .08em; padding: 13px; font-size: 13.5px;
+}
+.controls .stop:hover:not(:disabled) { background: #e04a4a; }
+
+.msg { min-height: 14px; margin: 4px 0; font-size: 11px; color: var(--dim); }
+.msg.err { color: #f0a3a3; }
+.msg.ok { color: #7ddba3; }
+
+.log-wrap { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 7px; }
+.log-wrap summary { cursor: pointer; font-size: 10.5px; color: var(--dim); }
+#log {
+  margin-top: 6px; max-height: 150px; overflow: auto;
+  font: 10px/1.5 ui-monospace, Menlo, monospace; color: var(--dim);
+  white-space: pre-wrap; word-break: break-word;
+  -webkit-user-select: text; user-select: text;
+}

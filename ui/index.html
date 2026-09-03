@@ -12,14 +12,23 @@
   <h1>WELLFIT TM</h1>
   <div class="conn">
     <span id="state" class="pill">disconnected</span>
+    <button id="pick" class="ghost" title="Choose a different device">device</button>
     <button id="connect" class="primary">Connect</button>
   </div>
 </header>
 
+<section class="picker" id="picker" hidden>
+  <div class="speed-head">
+    <span class="label">Choose your treadmill</span>
+    <button id="picker-close" class="ghost">cancel</button>
+  </div>
+  <div id="picker-list" class="picker-list"></div>
+  <button id="picker-rescan">Scan again</button>
+</section>
+
 <p class="safety">
-  <strong>Be on the belt before you start or change speed.</strong>
-  Never send Start or a speed change from across the room — the belt moves immediately.
-  Stop is always available below and works even if a command errors.
+  <strong>Be on the belt before Start or any speed change.</strong>
+  The belt moves immediately — never send a command from across the room.
 </p>
 
 <section class="metrics">
@@ -95,11 +104,12 @@
 
 <p id="msg" class="msg"></p>
 
-<details class="log-wrap">
+<details class="log-wrap" open>
   <summary>Command log</summary>
   <div id="log"></div>
 </details>
 
+<script src="ble.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

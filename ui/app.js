@@ -10,17 +10,8 @@
 //   - Idle packets repeat a stale speed (1.01 km/h), so running state comes
 //     from Fitness Machine Status / Training Status, never from speed.
 
-const u16 = n => `0000${n.toString(16).padStart(4, '0')}-0000-1000-8000-00805f9b34fb`;
-
-const FTMS = u16(0x1826);
-const CH = {
-  feature:    u16(0x2acc),
-  data:       u16(0x2acd),
-  training:   u16(0x2ad3),
-  speedRange: u16(0x2ad4),
-  control:    u16(0x2ad9),
-  status:     u16(0x2ada),
-};
+// BLE lives in ble.js (TM): native btleplug under Tauri, Web Bluetooth in a
+// browser. Everything below is transport-agnostic decoding and UI.
 
 const OP = {
   requestControl: 0x00,
@@ -39,8 +30,7 @@ const KMH_PER_MPH = 1.609344;
 
 const $ = id => document.getElementById(id);
 
-let device = null;
-let chars = {};
+let connected = false;
 let speedRange = null;   // { min, max, step } in km/h
 let target = null;       // current target speed, km/h, snapped to grid
 let useMph = false;
@@ -71,13 +61,18 @@ function setState(text, kind = '') {
 
 const hex = bytes => [...bytes].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
+// Tauri commands reject with a plain string, DOM APIs with an Error. Without
+// this, Rust-side failures surfaced as "undefined".
+const errText = e =>
+  typeof e === 'string' ? e : e?.message || JSON.stringify(e) || 'unknown error';
+
 // --- control point --------------------------------------------------------
 
 // One command at a time: the control point only tracks a single outstanding
 // request, and firing a second write before the indication lands loses it.
 async function command(opcode, params = [], label = null) {
   const name = label || `0x${opcode.toString(16).padStart(2, '0')}`;
-  if (!chars.control) { say('Not connected.', 'err'); return false; }
+  if (!connected) { say('Not connected.', 'err'); return false; }
   if (pending) { say(`Busy: ${pending.name} still pending.`, 'err'); return false; }
 
   const bytes = new Uint8Array([opcode, ...params]);
@@ -89,7 +84,7 @@ async function command(opcode, params = [], label = null) {
   }, 4000);
 
   try {
-    await chars.control.writeValue(bytes);
+    await TM.write(bytes);
   } catch (e) {
     clearTimeout(timer);
     pending = null;
@@ -118,8 +113,7 @@ async function command(opcode, params = [], label = null) {
   return false;
 }
 
-function onControlResponse(e) {
-  const b = new Uint8Array(e.target.value.buffer);
+function onControlResponse(b) {
   log(`<- ${hex(b)}`);
   if (b[0] !== 0x80) return;                    // not a response packet
 
@@ -144,8 +138,7 @@ function fmtTime(seconds) {
 
 // Treadmill Data (0x2ACD). Fields appear in flag order; bit 0 is inverted
 // (0 means Instantaneous Speed is present).
-function onData(e) {
-  const dv = e.target.value;
+function onData(dv) {
   const flags = dv.getUint16(0, true);
   let o = 2;
   const u8 = () => dv.getUint8(o++);
@@ -215,8 +208,7 @@ const STATUS = {
   0xff: 'control permission lost',
 };
 
-function onStatus(e) {
-  const b = new Uint8Array(e.target.value.buffer);
+function onStatus(b) {
   const op = b[0];
   log(`status: ${STATUS[op] ?? `0x${op.toString(16)}`} (${hex(b)})`);
 
@@ -334,6 +326,7 @@ const GOAL_MAX_MIN = 120;
 let goalMin = 30;        // 0 = off
 let walkedSec = 0;
 let goalHit = false;
+let walkStarted = false; // the goal stays unarmed until the belt actually moves
 let lastTick = null;     // ms timestamp of the previous tick while running
 
 function renderGoal() {
@@ -345,6 +338,10 @@ function renderGoal() {
 
   if (!goalMin) {
     $('goal-hint').textContent = 'No goal — walk as long as you like.';
+    return;
+  }
+  if (!walkStarted) {
+    $('goal-hint').textContent = `counts down once you press Start`;
     return;
   }
   const remaining = goalMin * 60 - walkedSec;
@@ -367,6 +364,7 @@ function tick() {
   }
 
   if (isRunning) {
+    walkStarted = true;
     if (lastTick !== null) walkedSec += (now - lastTick) / 1000;
     $('m-time').textContent = fmtTime(Math.floor(walkedSec));
     if (goalMin && !goalHit && walkedSec >= goalMin * 60) reachGoal();
@@ -409,6 +407,7 @@ function beep() {
 function resetWalk() {
   walkedSec = 0;
   goalHit = false;
+  walkStarted = false;
   lastTick = null;
   syncedFromDevice = false;
   localStorage.removeItem(SAVE_KEY);
@@ -441,17 +440,28 @@ function restoreSession() {
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch { return; }
   if (!s || Date.now() - s.savedAt > STALE_AFTER_MS) return;
 
+  // The goal setting is always worth keeping. The walk itself is only
+  // resumed if the belt was actually moving when we went away — otherwise a
+  // finished session would come back glowing "goal reached" before you'd
+  // taken a step.
   goalMin = s.goalMin ?? goalMin;
+
+  if (!s.isRunning) {
+    renderGoal();
+    return;
+  }
+
   walkedSec = s.walkedSec ?? 0;
   goalHit = !!s.goalHit;
+  walkStarted = true;
 
-  if (s.isRunning) {
-    // Assume the belt kept moving while the page was gone.
-    const gapSec = (Date.now() - s.savedAt) / 1000;
-    walkedSec += gapSec;
-    log(`restored mid-walk, credited ${Math.round(gapSec)}s gap`);
-  }
-  if (walkedSec > 0) $('m-time').textContent = fmtTime(Math.floor(walkedSec));
+  // Assume the belt kept moving while the page was gone.
+  const gapSec = (Date.now() - s.savedAt) / 1000;
+  walkedSec += gapSec;
+  log(`restored mid-walk, credited ${Math.round(gapSec)}s gap`);
+
+  if (goalHit) reachGoal();
+  $('m-time').textContent = fmtTime(Math.floor(walkedSec));
   renderGoal();
 }
 
@@ -475,90 +485,154 @@ function syncFromDevice() {
 
 let tickTimer = null;
 
-// Chrome remembers granted Bluetooth devices per origin, so a reload can go
-// straight back to the treadmill with no chooser dialog. getDevices() is not
-// in every build, hence the feature check and the manual-button fallback.
+// Under Tauri this is a plain native connect — no chooser, no permission
+// backend. In a browser it needs getDevices(), which is flag-gated.
 async function autoConnect() {
-  if (!navigator.bluetooth?.getDevices) {
-    say('Press Connect. (Silent reconnect needs chrome://flags/#enable-web-bluetooth-new-permissions-backend)', '');
-    return;
-  }
-  let known = [];
-  try { known = await navigator.bluetooth.getDevices(); } catch { return; }
-  if (!known.length) return;
-
-  const savedId = localStorage.getItem('tm-device-id');
-  const dev = known.find(d => d.id === savedId)
-           || known.find(d => d.name?.startsWith('TM'));
-  if (!dev) return;
-
-  setState('reconnecting…');
-  say(`Reconnecting to ${dev.name || 'treadmill'}…`, '');
+  setState(TM.isTauri ? 'scanning…' : 'reconnecting…');
+  say(TM.isTauri ? 'Looking for the treadmill…' : '', '');
   try { audioCtx ??= new AudioContext(); } catch { /* needs a gesture, fine */ }
   try {
-    await setUp(dev);
+    await setUp(await TM.autoConnect());
+  } catch (e) {
+    const msg = errText(e);
+    setState('disconnected', 'err');
+    log(`auto-connect failed: ${msg}`);
+
+    // No remembered device yet (or it's gone): look for it by name, and fall
+    // back to the full list if that's not conclusive.
+    if (TM.canScan) return findOrPick();
+
+    say(msg === 'no-getdevices'
+      ? 'Press Connect. (Silent reconnect needs chrome://flags/#enable-web-bluetooth-new-permissions-backend)'
+      : `${msg} — press Connect to retry.`, 'err');
+  }
+}
+
+// --- device picker --------------------------------------------------------
+
+// Native BLE has no OS-provided chooser, so we supply one: scan, list, let the
+// user pick, remember the choice.
+const NAME_HINTS = /wellfit|tm/i;
+const isLikely = d => d.ftms || NAME_HINTS.test(d.name);
+
+// Auto-connect only on an unambiguous hint match. Zero or several candidates
+// means we can't know, so the list goes up instead of us picking for you.
+async function findOrPick() {
+  say('Looking for your treadmill…', '');
+  setState('scanning…');
+  let devices;
+  try {
+    devices = await TM.scan(6);
   } catch (e) {
     setState('disconnected', 'err');
-    say('Could not reconnect automatically — press Connect.', '');
-    log(`auto-connect failed: ${e.message}`);
+    say(`Scan failed: ${errText(e)}`, 'err');
+    return;
+  }
+
+  const likely = devices.filter(isLikely);
+  log(`scan: ${devices.length} named device(s), ${likely.length} likely`);
+
+  if (likely.length === 1) {
+    log(`auto-selected ${likely[0].name}`);
+    return choose(likely[0]);
+  }
+
+  openPicker(devices, likely.length
+    ? `${likely.length} possible matches — pick yours.`
+    : 'No obvious treadmill. Pick from everything nearby.');
+}
+
+async function showPicker() {
+  $('picker').hidden = false;
+  await rescan();
+}
+
+async function rescan() {
+  const list = $('picker-list');
+  list.innerHTML = '<div class="picker-empty">Scanning…</div>';
+  $('picker-rescan').disabled = true;
+  try {
+    openPicker(await TM.scan(6));
+  } catch (e) {
+    list.innerHTML = `<div class="picker-empty">Scan failed: ${escapeHtml(errText(e))}</div>`;
+  } finally {
+    $('picker-rescan').disabled = false;
+  }
+}
+
+function openPicker(devices, note = '') {
+  $('picker').hidden = false;
+  setState('disconnected');
+  if (note) say(note, '');
+
+  const list = $('picker-list');
+  list.innerHTML = '';
+  if (!devices.length) {
+    list.innerHTML = '<div class="picker-empty">Nothing found. Wake the treadmill and scan again.</div>';
+    return;
+  }
+
+  // Likely candidates first, then strongest signal.
+  const sorted = [...devices].sort((a, b) =>
+    (isLikely(b) - isLikely(a)) || ((b.rssi ?? -999) - (a.rssi ?? -999)));
+
+  for (const d of sorted) {
+    const btn = document.createElement('button');
+    const meta = [d.ftms ? 'FTMS' : null, d.rssi != null ? `${d.rssi} dBm` : null]
+      .filter(Boolean).join(' · ');
+    btn.innerHTML =
+      `<span class="dev-name">${escapeHtml(d.name)}</span>` +
+      `<span class="dev-meta ${isLikely(d) ? 'ftms' : ''}">${escapeHtml(meta)}</span>`;
+    btn.addEventListener('click', () => choose(d));
+    list.appendChild(btn);
+  }
+}
+
+const escapeHtml = s => String(s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function choose(dev) {
+  $('picker').hidden = true;
+  setState('connecting…');
+  say(`Connecting to ${dev.name}…`, '');
+  try {
+    await setUp(await TM.connect(dev.id));
+  } catch (e) {
+    const msg = errText(e);
+    setState('disconnected', 'err');
+    say(msg, 'err');
+    log(`connect to ${dev.name} failed: ${msg}`);
   }
 }
 
 async function connect() {
-  $('connect').disabled = true;
-  setState('connecting…');
   // Built here because the click is a user gesture; audio started later
   // without one gets blocked by autoplay policy.
   try { audioCtx ??= new AudioContext(); } catch { /* no audio, banner only */ }
+
+  // With native BLE, Connect means "show me what's out there".
+  if (TM.canScan) return showPicker();
+
+  $('connect').disabled = true;
+  setState('connecting…');
   try {
-    const dev = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'TM' }, { services: [FTMS] }],
-      optionalServices: [FTMS],
-    });
-    await setUp(dev);
+    await setUp(await TM.connect());
   } catch (e) {
+    const msg = errText(e);
     setState('disconnected', 'err');
-    say(e.name === 'NotFoundError' ? 'No device selected.' : e.message, 'err');
-    log(`connect failed: ${e.message}`);
+    say(e.name === 'NotFoundError' ? 'No device selected.' : msg, 'err');
+    log(`connect failed: ${msg}`);
   } finally {
     $('connect').disabled = false;
   }
 }
 
-async function setUp(dev) {
-  device = dev;
-  localStorage.setItem('tm-device-id', device.id);
-  device.addEventListener('gattserverdisconnected', onDisconnected);
-
-  const server = await device.gatt.connect();
-  const svc = await server.getPrimaryService(FTMS);
-  for (const [k, uuid] of Object.entries(CH)) {
-    try { chars[k] = await svc.getCharacteristic(uuid); } catch { /* absent */ }
-  }
-  if (!chars.control) throw new Error('No control point — this device cannot be driven over FTMS.');
-
-  // Speed range drives the whole UI, so read it before enabling anything.
-  const sr = await chars.speedRange.readValue();
-  speedRange = {
-    min: sr.getUint16(0, true) / 100,
-    max: sr.getUint16(2, true) / 100,
-    step: sr.getUint16(4, true) / 100,
-  };
-  log(`speed range ${speedRange.min}–${speedRange.max} km/h step ${speedRange.step}`);
+async function setUp(info) {
+  connected = true;
+  speedRange = info.speedRange;
+  log(`${info.name}: speed ${speedRange.min}–${speedRange.max} km/h step ${speedRange.step}`);
 
   target = speedRange.min;
-
-  await chars.control.startNotifications();
-  chars.control.addEventListener('characteristicvaluechanged', onControlResponse);
-
-  if (chars.data) {
-    await chars.data.startNotifications();
-    chars.data.addEventListener('characteristicvaluechanged', onData);
-  }
-  if (chars.status) {
-    await chars.status.startNotifications();
-    chars.status.addEventListener('characteristicvaluechanged', onStatus);
-  }
 
   setState('connected', 'on');
   $('speed-ctl').hidden = false;
@@ -579,7 +653,7 @@ async function setUp(dev) {
 }
 
 function onDisconnected() {
-  chars = {};
+  connected = false;
   isRunning = false;
   lastTick = null;
   pending?.resolve({ ok: false, reason: 'timeout' });
@@ -594,6 +668,10 @@ function onDisconnected() {
 // --- wiring ---------------------------------------------------------------
 
 $('connect').addEventListener('click', connect);
+$('pick').addEventListener('click', showPicker);
+$('pick').hidden = !TM.canScan;
+$('picker-rescan').addEventListener('click', rescan);
+$('picker-close').addEventListener('click', () => { $('picker').hidden = true; });
 $('start').addEventListener('click', () => command(OP.start, [], 'Start'));
 $('pause').addEventListener('click', () => command(OP.stopPause, [0x02], 'Pause'));
 $('stop').addEventListener('click', () => command(OP.stopPause, [0x01], 'Stop'));
@@ -638,7 +716,15 @@ $('unit-toggle').addEventListener('click', () => {
 addEventListener('pagehide', saveSession);
 document.addEventListener('visibilitychange', saveSession);
 
-if (!navigator.bluetooth) {
+log(TM.isTauri ? 'transport: native BLE (btleplug)' : 'transport: Web Bluetooth');
+
+TM.on('data', onData);
+TM.on('status', onStatus);
+TM.on('control', onControlResponse);
+TM.on('disconnected', onDisconnected);
+TM.on('error', m => { log(`ble error: ${m}`); say(m, 'err'); });
+
+if (!TM.isTauri && !navigator.bluetooth) {
   say('Web Bluetooth unavailable. Use desktop Chrome or Edge over http://localhost.', 'err');
   $('connect').disabled = true;
 } else {

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- macOS refuses CoreBluetooth access without a stated reason. -->
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>Connects to your treadmill to read speed and distance and to send start, stop, and speed commands.</string>
+</dict>
+</plist>
