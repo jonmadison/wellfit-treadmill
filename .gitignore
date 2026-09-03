@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+**/*.rs.bk
+
+# Build output
+dist/
+build/
+
+# Signing keys & secrets — never commit these
+*.pem
+*.p12
+*.keystore
+.env
+.env.*
+!.env.example
+
+# Editors
+.vscode/
+.idea/
+*.swp

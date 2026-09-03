@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FTMS Discovery</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 24px; background: #14161a; color: #e6e8eb;
+         font: 15px/1.5 system-ui, sans-serif; max-width: 900px; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: #9aa3ad; font-size: 13px; }
+  .warn { border-left: 3px solid #e0a33e; background: #26221a; padding: 10px 14px;
+          margin: 0 0 20px; font-size: 13px; color: #f0d9a8; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid #3a4048;
+           background: #232830; color: #e6e8eb; cursor: pointer; }
+  button:hover:not(:disabled) { background: #2c323c; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: #2f6feb; border-color: #2f6feb; color: #fff; }
+  input[type=text] { font: inherit; padding: 8px 10px; border-radius: 6px;
+                     border: 1px solid #3a4048; background: #1b1f25; color: #e6e8eb; }
+  label { font-size: 13px; color: #9aa3ad; }
+  #log { background: #0e1013; border: 1px solid #262b32; border-radius: 8px;
+         padding: 14px; margin-top: 16px; white-space: pre-wrap; word-break: break-word;
+         font: 12.5px/1.6 ui-monospace, Menlo, monospace; max-height: 60vh; overflow: auto; }
+  .adv { border-top: 1px solid #262b32; margin-top: 20px; padding-top: 14px; }
+  .adv summary { cursor: pointer; font-size: 13px; color: #9aa3ad; }
+</style>
+</head>
+<body>
+
+<h1>FTMS Treadmill Discovery</h1>
+<p class="sub">Connects, enumerates the Fitness Machine Service, and decodes what your treadmill
+actually supports. Read-only except for the explicitly labelled probes.</p>
+
+<div class="warn">
+  <strong>Safety:</strong> stay off the belt while running discovery. Nothing here commands
+  speed or incline, but Request Control can put the treadmill into a remote-controlled state.
+</div>
+
+<div class="row">
+  <button id="connect" class="primary">Connect</button>
+  <button id="disconnect" disabled>Disconnect</button>
+  <label>Name prefix <input type="text" id="prefix" value="TM" size="8"></label>
+  <label><input type="checkbox" id="acceptAll"> ignore prefix, list all devices</label>
+</div>
+
+<div class="row">
+  <button id="notify" disabled>Listen to Treadmill Data (15s)</button>
+  <button id="reqctl" disabled>Probe: Request Control (0x00)</button>
+  <button id="copy" disabled>Copy report</button>
+</div>
+
+<details class="adv">
+  <summary>Advanced: send a raw control-point opcode</summary>
+  <div class="row" style="margin-top:12px">
+    <label>Hex bytes <input type="text" id="rawhex" placeholder="e.g. 07" size="20"></label>
+    <button id="sendraw" disabled>Send</button>
+  </div>
+  <p class="sub" style="margin:0">Only use this with the treadmill clear and someone watching it.
+  Opcodes like 07 (Start) will physically move the belt.</p>
+</details>
+
+<div id="log">Not connected.</div>
+
+<script src="discover.js"></script>
+</body>
+</html>
