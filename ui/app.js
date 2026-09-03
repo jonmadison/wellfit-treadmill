@@ -30,6 +30,10 @@ const KMH_PER_MPH = 1.609344;
 
 const $ = id => document.getElementById(id);
 
+// Both layouts carry their own copies of these controls.
+const CONTROL_IDS = ['start', 'pause', 'stop', 'p-start', 'p-pause', 'p-stop'];
+const setControlsEnabled = on => CONTROL_IDS.forEach(id => { $(id).disabled = !on; });
+
 let connected = false;
 let speedRange = null;   // { min, max, step } in km/h
 let target = null;       // current target speed, km/h, snapped to grid
@@ -268,6 +272,11 @@ function renderTarget() {
   $('target-val').textContent = toDisplay(target).toFixed(digits());
   $('target-unit').textContent = unit;
   $('m-speed-unit').textContent = unit;
+  // The strip is too narrow for a unit label; it lives in the tooltip.
+  $('p-speed').textContent = toDisplay(target).toFixed(digits());
+  $('p-speed').title = `target speed in ${unit}`;
+  $('p-down').disabled = target <= speedRange.min + 1e-9;
+  $('p-up').disabled = target >= speedRange.max - 1e-9;
   $('speed-down').disabled = target <= speedRange.min + 1e-9;
   $('speed-up').disabled = target >= speedRange.max - 1e-9;
 
@@ -329,6 +338,13 @@ let goalHit = false;
 let walkStarted = false; // the goal stays unarmed until the belt actually moves
 let lastTick = null;     // ms timestamp of the previous tick while running
 
+// Both layouts show the walk clock, so update them together.
+function showTime() {
+  const t = fmtTime(Math.floor(walkedSec));
+  $('m-time').textContent = t;
+  $('p-time').textContent = t;
+}
+
 function renderGoal() {
   $('goal-val').textContent = goalMin || '–';
   $('goal-down').disabled = goalMin <= 0;
@@ -338,16 +354,21 @@ function renderGoal() {
 
   if (!goalMin) {
     $('goal-hint').textContent = 'No goal — walk as long as you like.';
+    $('p-goal').textContent = '';
     return;
   }
   if (!walkStarted) {
-    $('goal-hint').textContent = `counts down once you press Start`;
+    $('goal-hint').textContent = 'counts down once you press Start';
+    $('p-goal').textContent = `/ ${goalMin}m`;
     return;
   }
   const remaining = goalMin * 60 - walkedSec;
   $('goal-hint').textContent = remaining > 0
     ? `${fmtTime(remaining)} remaining`
     : `goal reached, ${fmtTime(-remaining)} over`;
+  $('p-goal').textContent = remaining > 0
+    ? `${fmtTime(remaining)} left`
+    : `+${fmtTime(-remaining)}`;
 }
 
 // Wall-clock delta rather than a fixed +1, so a throttled background tab
@@ -366,7 +387,7 @@ function tick() {
   if (isRunning) {
     walkStarted = true;
     if (lastTick !== null) walkedSec += (now - lastTick) / 1000;
-    $('m-time').textContent = fmtTime(Math.floor(walkedSec));
+    showTime();
     if (goalMin && !goalHit && walkedSec >= goalMin * 60) reachGoal();
   }
   lastTick = isRunning ? now : null;
@@ -411,7 +432,7 @@ function resetWalk() {
   lastTick = null;
   syncedFromDevice = false;
   localStorage.removeItem(SAVE_KEY);
-  $('m-time').textContent = '0:00';
+  showTime();
   $('goal-alert').hidden = true;
   $('goal-ctl').classList.remove('done');
   document.title = 'WELLFIT TM Control';
@@ -419,6 +440,54 @@ function resetWalk() {
 }
 
 // --- connect --------------------------------------------------------------
+
+// --- modes ----------------------------------------------------------------
+
+// Two window sizes: a floating strip for while you're walking, and a tall
+// window that fits every control without scrolling.
+// Heights are window heights, which on macOS include the titlebar — hence the
+// headroom over the strip's own ~46px. fitHeight() corrects any shortfall.
+const SIZES = {
+  player: { w: 330, h: 96 },
+  full:   { w: 380, h: 900 },
+};
+
+let mode = localStorage.getItem('tm-mode') === 'player' ? 'player' : 'full';
+
+async function applyMode(next, { persist = true } = {}) {
+  mode = next;
+  if (persist) localStorage.setItem('tm-mode', mode);
+
+  document.body.classList.toggle('mode-player', mode === 'player');
+  document.body.classList.toggle('mode-full', mode === 'full');
+  $('mode-toggle').textContent = mode === 'player' ? 'expand' : 'compact';
+
+  const w = window.__TAURI__?.window?.getCurrentWindow?.();
+  if (!w) return;
+  const { w: width, h: height } = SIZES[mode];
+  try {
+    const LogicalSize = window.__TAURI__.dpi?.LogicalSize
+      ?? window.__TAURI__.window?.LogicalSize;
+    await w.setSize(new LogicalSize(width, height));
+    // The strip is meant to float over other apps; the full window isn't.
+    await w.setAlwaysOnTop(mode === 'player');
+    if (mode === 'player') await fitHeight(w, LogicalSize, width, height);
+  } catch (e) {
+    log(`window resize failed: ${errText(e)}`);
+  }
+}
+
+// Whether setSize counts the titlebar varies by platform, so rather than
+// guessing, measure what the content actually got and grow if it was clipped.
+async function fitHeight(w, LogicalSize, width, height) {
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const need = $('player-bar').getBoundingClientRect().height + 14;
+  const short = Math.ceil(need - window.innerHeight);
+  if (short > 0) {
+    log(`player strip clipped by ${short}px, growing window`);
+    await w.setSize(new LogicalSize(width, height + short));
+  }
+}
 
 // --- session persistence --------------------------------------------------
 
@@ -461,7 +530,7 @@ function restoreSession() {
   log(`restored mid-walk, credited ${Math.round(gapSec)}s gap`);
 
   if (goalHit) reachGoal();
-  $('m-time').textContent = fmtTime(Math.floor(walkedSec));
+  showTime();
   renderGoal();
 }
 
@@ -475,7 +544,7 @@ function syncFromDevice() {
   if (Math.abs(drift) > 5) {
     log(`walk time ${fmtTime(Math.floor(walkedSec))} -> treadmill says ${fmtTime(deviceElapsed)}`);
     walkedSec = deviceElapsed;
-    $('m-time').textContent = fmtTime(Math.floor(walkedSec));
+    showTime();
     if (goalMin && !goalHit && walkedSec >= goalMin * 60) reachGoal();
     renderGoal();
   }
@@ -561,6 +630,8 @@ async function rescan() {
 }
 
 function openPicker(devices, note = '') {
+  // The picker only exists in the full layout.
+  if (mode !== 'full') applyMode('full', { persist: false });
   $('picker').hidden = false;
   setState('disconnected');
   if (note) say(note, '');
@@ -642,12 +713,14 @@ async function setUp(info) {
   renderGoal();
 
   if (await command(OP.requestControl, [], 'Request control')) {
-    for (const id of ['start', 'pause', 'stop']) $(id).disabled = false;
+    setControlsEnabled(true);
     say(walkedSec > 0
       ? `Reconnected mid-walk at ${fmtTime(Math.floor(walkedSec))}.`
       : 'Ready. Get on the belt before pressing Start.', '');
   } else {
-    $('stop').disabled = false;   // keep Stop reachable regardless
+    // Keep Stop reachable regardless, in both layouts.
+    $('stop').disabled = false;
+    $('p-stop').disabled = false;
     say('Connected, but the treadmill refused control. Stop is still available.', 'err');
   }
 }
@@ -660,7 +733,7 @@ function onDisconnected() {
   pending = null;
   setState('disconnected', 'err');
   say('Treadmill disconnected. It keeps running — use its own panel to stop.', 'err');
-  for (const id of ['start', 'pause', 'stop']) $(id).disabled = true;
+  setControlsEnabled(false);
   $('speed-ctl').hidden = true;
   log('disconnected');
 }
@@ -678,6 +751,24 @@ $('stop').addEventListener('click', () => command(OP.stopPause, [0x01], 'Stop'))
 
 $('speed-up').addEventListener('click', () => nudge(+1));
 $('speed-down').addEventListener('click', () => nudge(-1));
+
+// Player strip: same handlers, smaller buttons.
+$('p-start').addEventListener('click', () => command(OP.start, [], 'Start'));
+$('p-pause').addEventListener('click', () => command(OP.stopPause, [0x02], 'Pause'));
+$('p-stop').addEventListener('click', () => command(OP.stopPause, [0x01], 'Stop'));
+$('p-up').addEventListener('click', () => nudge(+1));
+$('p-down').addEventListener('click', () => nudge(-1));
+
+$('mode-toggle').addEventListener('click', () => applyMode(mode === 'full' ? 'player' : 'full'));
+$('p-time').addEventListener('click', () => applyMode('full'));
+$('p-expand').addEventListener('click', () => applyMode('full'));
+
+// Dismissed for good once acknowledged — but it stays in the README.
+$('safety-dismiss').addEventListener('click', () => {
+  $('safety').hidden = true;
+  localStorage.setItem('tm-safety-ack', '1');
+});
+if (localStorage.getItem('tm-safety-ack')) $('safety').hidden = true;
 
 // Extending the goal past the current walk time re-arms the alert, so
 // "give me 5 more minutes" works without reconnecting.
@@ -717,6 +808,7 @@ addEventListener('pagehide', saveSession);
 document.addEventListener('visibilitychange', saveSession);
 
 log(TM.isTauri ? 'transport: native BLE (btleplug)' : 'transport: Web Bluetooth');
+applyMode(mode, { persist: false });
 
 TM.on('data', onData);
 TM.on('status', onStatus);

@@ -16,6 +16,45 @@
    stylesheet's [hidden] rule, which would leave hidden elements visible. */
 [hidden] { display: none !important; }
 
+/* --- modes -------------------------------------------------------------
+   .mode-player is the floating strip: player bar only.
+   .mode-full is everything, in a taller window. */
+.mode-player #full,
+.mode-player header { display: none; }
+.mode-full .player-bar { display: none; }
+.mode-player { padding: 6px; }
+
+.player-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 8px;
+}
+.pb-block { display: flex; align-items: center; gap: 5px; }
+.pb-time { font-size: 17px; font-variant-numeric: tabular-nums; }
+.pb-goal { font-size: 9.5px; color: var(--dim); white-space: nowrap; }
+.pb-val {
+  font-size: 15px; font-variant-numeric: tabular-nums;
+  min-width: 44px; text-align: center;
+}
+.pb-step {
+  width: 28px; height: 28px; padding: 0; font-size: 15px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.pb-controls button {
+  width: 28px; height: 28px; padding: 0; font-size: 10px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.pb-controls .stop { background: var(--red); border-color: var(--red); color: #fff; }
+.pb-controls .stop:hover:not(:disabled) { background: #e04a4a; }
+
+/* Drag the strip by its background, since it has no titlebar of its own. */
+.mode-player .player-bar { -webkit-app-region: drag; }
+.mode-player .player-bar button,
+.mode-player .player-bar .pb-val { -webkit-app-region: no-drag; }
+
+/* Click the time to go back to the full window. */
+.mode-player .pb-time { cursor: zoom-in; }
+
 /* Sized for a narrow always-on-top window that sits over other apps, so
    everything is a step smaller than the standalone browser version was. */
 body {
@@ -48,9 +87,11 @@ button.ghost { background: none; border: none; color: var(--dim); font-size: 11p
 button.ghost:hover { color: var(--text); background: none; }
 
 .safety {
+  display: flex; align-items: flex-start; gap: 6px;
   border-left: 2px solid #e0a33e; background: #26221a;
   padding: 6px 9px; margin: 8px 0; font-size: 10.5px; line-height: 1.35; color: #f0d9a8;
 }
+.safety button { color: #f0d9a8; flex: none; }
 
 .metrics {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 8px 0;
@@ -62,8 +103,8 @@ button.ghost:hover { color: var(--text); background: none; }
 .metric.big { grid-column: 1 / -1; }
 .metric .label { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: .07em; }
 .metric .value { font-size: 17px; font-variant-numeric: tabular-nums; line-height: 1.15; }
-/* Speed is the one number worth reading from across the room. */
-.metric.big .value { font-size: 34px; }
+/* Time walked is the headline number: it's what the goal is measured against. */
+.metric.big .value { font-size: 38px; }
 .metric .unit { font-size: 9.5px; color: var(--dim); }
 
 .speed { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 8px 9px; }

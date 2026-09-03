@@ -3,92 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WELLFIT TM Control</title>
+<title>WELLFIT TM</title>
 <link rel="stylesheet" href="app.css">
 </head>
-<body>
+<body class="mode-full">
 
 <header>
   <h1>WELLFIT TM</h1>
   <div class="conn">
     <span id="state" class="pill">disconnected</span>
+    <button id="mode-toggle" class="ghost" title="Shrink to floating player">compact</button>
     <button id="pick" class="ghost" title="Choose a different device">device</button>
     <button id="connect" class="primary">Connect</button>
   </div>
 </header>
 
-<section class="picker" id="picker" hidden>
-  <div class="speed-head">
-    <span class="label">Choose your treadmill</span>
-    <button id="picker-close" class="ghost">cancel</button>
+<!-- Compact floating player. Same handlers as the full controls. -->
+<section class="player-bar" id="player-bar">
+  <div class="pb-block">
+    <span class="pb-time" id="p-time">0:00</span>
+    <span class="pb-goal" id="p-goal"></span>
   </div>
-  <div id="picker-list" class="picker-list"></div>
-  <button id="picker-rescan">Scan again</button>
-</section>
-
-<p class="safety">
-  <strong>Be on the belt before Start or any speed change.</strong>
-  The belt moves immediately — never send a command from across the room.
-</p>
-
-<section class="metrics">
-  <div class="metric big">
-    <span class="label">Speed</span>
-    <span class="value" id="m-speed">–</span>
-    <span class="unit" id="m-speed-unit">km/h</span>
+  <div class="pb-block pb-speed">
+    <button id="p-down" class="pb-step" title="Slower">–</button>
+    <span class="pb-val" id="p-speed">–</span>
+    <button id="p-up" class="pb-step" title="Faster">+</button>
   </div>
-  <div class="metric">
-    <span class="label">Time</span>
-    <span class="value" id="m-time">–</span>
+  <div class="pb-block pb-controls">
+    <button id="p-start" title="Start">&#9654;</button>
+    <button id="p-pause" title="Pause">&#10073;&#10073;</button>
+    <button id="p-stop" class="stop" title="Stop">&#9632;</button>
+    <button id="p-expand" title="Back to the full window">&#8599;</button>
   </div>
-  <div class="metric">
-    <span class="label">Distance</span>
-    <span class="value" id="m-dist">–</span>
-    <span class="unit">m</span>
-  </div>
-  <div class="metric" id="m-hr-wrap" hidden>
-    <span class="label">Heart rate</span>
-    <span class="value" id="m-hr">–</span>
-    <span class="unit">bpm</span>
-  </div>
-  <div class="metric" id="m-kcal-wrap" hidden>
-    <span class="label">Energy</span>
-    <span class="value" id="m-kcal">–</span>
-    <span class="unit">kcal</span>
-  </div>
-  <!-- No incline: this unit's incline is a manual mechanical adjustment. -->
-</section>
-
-<section class="speed" id="speed-ctl" hidden>
-  <div class="speed-head">
-    <span class="label">Target speed</span>
-    <button id="unit-toggle" class="ghost">show mph</button>
-  </div>
-  <div class="speed-row">
-    <button id="speed-down" class="step">–</button>
-    <div class="target">
-      <span id="target-val">–</span>
-      <span class="unit" id="target-unit">km/h</span>
-    </div>
-    <button id="speed-up" class="step">+</button>
-  </div>
-  <div class="range-hint" id="range-hint"></div>
-</section>
-
-<section class="goal" id="goal-ctl" hidden>
-  <div class="speed-head">
-    <span class="label">Walk goal</span>
-    <button id="goal-off" class="ghost">turn off</button>
-  </div>
-  <div class="speed-row">
-    <button id="goal-down" class="step">–</button>
-    <div class="target">
-      <span id="goal-val">30</span>
-      <span class="unit">min</span>
-    </div>
-    <button id="goal-up" class="step">+</button>
-  </div>
-  <div class="range-hint" id="goal-hint"></div>
 </section>
 
 <div id="goal-alert" class="goal-alert" hidden>
@@ -96,18 +42,101 @@
   <button id="goal-dismiss" class="ghost">dismiss</button>
 </div>
 
-<section class="controls">
-  <button id="start" disabled>Start</button>
-  <button id="pause" disabled>Pause</button>
-  <button id="stop" class="stop" disabled>STOP</button>
-</section>
+<div id="full">
 
-<p id="msg" class="msg"></p>
+  <p class="safety" id="safety">
+    <span><strong>Be on the belt before Start or any speed change.</strong>
+    The belt moves immediately — never send a command from across the room.</span>
+    <button id="safety-dismiss" class="ghost">got it</button>
+  </p>
 
-<details class="log-wrap" open>
-  <summary>Command log</summary>
-  <div id="log"></div>
-</details>
+  <section class="picker" id="picker" hidden>
+    <div class="speed-head">
+      <span class="label">Choose your treadmill</span>
+      <button id="picker-close" class="ghost">cancel</button>
+    </div>
+    <div id="picker-list" class="picker-list"></div>
+    <button id="picker-rescan">Scan again</button>
+  </section>
+
+  <!-- Time and goal lead: the walk is the thing being tracked. -->
+  <section class="metrics">
+    <div class="metric big">
+      <span class="label">Time walked</span>
+      <span class="value" id="m-time">0:00</span>
+    </div>
+  </section>
+
+  <section class="goal" id="goal-ctl" hidden>
+    <div class="speed-head">
+      <span class="label">Walk goal</span>
+      <button id="goal-off" class="ghost">turn off</button>
+    </div>
+    <div class="speed-row">
+      <button id="goal-down" class="step">–</button>
+      <div class="target">
+        <span id="goal-val">30</span>
+        <span class="unit">min</span>
+      </div>
+      <button id="goal-up" class="step">+</button>
+    </div>
+    <div class="range-hint" id="goal-hint"></div>
+  </section>
+
+  <section class="speed" id="speed-ctl" hidden>
+    <div class="speed-head">
+      <span class="label">Target speed</span>
+      <button id="unit-toggle" class="ghost">show mph</button>
+    </div>
+    <div class="speed-row">
+      <button id="speed-down" class="step">–</button>
+      <div class="target">
+        <span id="target-val">–</span>
+        <span class="unit" id="target-unit">km/h</span>
+      </div>
+      <button id="speed-up" class="step">+</button>
+    </div>
+    <div class="range-hint" id="range-hint"></div>
+  </section>
+
+  <section class="controls">
+    <button id="start" disabled>Start</button>
+    <button id="pause" disabled>Pause</button>
+    <button id="stop" class="stop" disabled>STOP</button>
+  </section>
+
+  <section class="metrics">
+    <div class="metric">
+      <span class="label">Speed</span>
+      <span class="value" id="m-speed">–</span>
+      <span class="unit" id="m-speed-unit">km/h</span>
+    </div>
+    <div class="metric">
+      <span class="label">Distance</span>
+      <span class="value" id="m-dist">–</span>
+      <span class="unit">m</span>
+    </div>
+    <div class="metric" id="m-hr-wrap" hidden>
+      <span class="label">Heart rate</span>
+      <span class="value" id="m-hr">–</span>
+      <span class="unit">bpm</span>
+    </div>
+    <div class="metric" id="m-kcal-wrap" hidden>
+      <span class="label">Energy</span>
+      <span class="value" id="m-kcal">–</span>
+      <span class="unit">kcal</span>
+    </div>
+    <!-- No incline: this unit's incline is a manual mechanical adjustment. -->
+  </section>
+
+  <p id="msg" class="msg"></p>
+
+  <details class="log-wrap" open>
+    <summary>Command log</summary>
+    <div id="log"></div>
+  </details>
+
+</div>
 
 <script src="ble.js"></script>
 <script src="app.js"></script>

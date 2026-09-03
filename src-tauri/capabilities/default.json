@@ -6,6 +6,9 @@
   "permissions": [
     "core:default",
     "core:event:default",
-    "core:window:allow-set-always-on-top"
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-size",
+    "core:window:allow-inner-size",
+    "core:window:allow-scale-factor"
   ]
 }

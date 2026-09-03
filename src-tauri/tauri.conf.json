@@ -11,10 +11,10 @@
     "windows": [
       {
         "title": "WELLFIT TM",
-        "width": 340,
-        "height": 620,
+        "width": 380,
+        "height": 900,
         "minWidth": 300,
-        "minHeight": 420,
+        "minHeight": 52,
         "alwaysOnTop": true,
         "resizable": true,
         "titleBarStyle": "Visible"
