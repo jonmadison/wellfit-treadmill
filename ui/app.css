@@ -216,11 +216,10 @@ button.tiny:hover { color: var(--text); background: none; }
   color: #fff; font-weight: 600; letter-spacing: .08em; padding: 13px; font-size: 13.5px;
 }
 .controls .stop:hover:not(:disabled) { background: var(--red-hover); }
-.controls .go, .pb-controls .go {
+.controls .go {
   background: var(--green); border-color: var(--green); color: #fff;
 }
-.controls .go:hover:not(:disabled),
-.pb-controls .go:hover:not(:disabled) { background: var(--green-hover); }
+.controls .go:hover:not(:disabled) { background: var(--green-hover); }
 
 .msg { min-height: 14px; margin: 4px 0; font-size: 11px; color: var(--dim); }
 .msg.err { color: var(--err-fg); }
