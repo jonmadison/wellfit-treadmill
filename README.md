@@ -1,10 +1,11 @@
 # WELLFIT TM treadmill control
 
-A small always-on-top desktop app to drive a WELLFIT TM walking pad over
+A small always-on-top macOS app to drive a WELLFIT TM walking pad over
 Bluetooth using FTMS (Fitness Machine Service, `0x1826`). Personal tool: plain
 JS frontend, Rust BLE, no framework, no bundler.
 
-Also runs as a plain web page in Chrome/Edge — see [Browser mode](#browser-mode).
+Desktop only: BLE runs natively through btleplug, because WKWebView — and so
+Tauri on macOS — has no Web Bluetooth API.
 
 ## Install (macOS)
 
@@ -78,34 +79,16 @@ a few seconds. Webview devtools: right-click → Inspect Element.
 | Path | Purpose |
 |---|---|
 | `ui/index.html`, `app.js`, `app.css` | UI, FTMS decoding, walk timer |
-| `ui/ble.js` | Transport shim: native BLE under Tauri, Web Bluetooth in a browser |
+| `ui/ble.js` | Transport: Tauri commands and events over the Rust BLE layer |
 | `src-tauri/src/ble.rs` | BLE via btleplug: scan, connect, notification pump |
 | `src-tauri/src/main.rs` | Tauri commands |
-| `ui/discover.html`, `discover.js` | Standalone device prober (browser only) |
 | `bundle.sh` | Builds the `.app`; used by both scripts |
-
-### Browser mode
-
-`ui/` works as a static page, using Web Bluetooth instead of the Rust layer:
-
-```bash
-cd ui && python3 -m http.server 8000
-```
-
-Then open <http://localhost:8000/>. Chrome or Edge on desktop only — Safari and
-Firefox have no Web Bluetooth, and `file://` doesn't count as a secure context.
-Silent reconnect needs
-`chrome://flags/#enable-web-bluetooth-new-permissions-backend`.
-
-`discover.html` is the device prober: it dumps every service and
-characteristic, decodes the feature bitfield and supported ranges, and samples
-telemetry. Use it to re-probe after a firmware change, or against a different
-treadmill before trusting anything below.
 
 ## This treadmill's quirks
 
 Everything here came from probing the actual unit, not from the spec. A
-different treadmill will differ.
+different treadmill will differ — the notes below are why the code looks the
+way it does.
 
 - **Speed grid is imperial.** `0x2AD4` reports 0.96–6.11 km/h with a 0.32 km/h
   minimum increment — that's 0.6–3.8 mph in 0.2 steps. Targets are sent at the

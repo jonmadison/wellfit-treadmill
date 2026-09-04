@@ -650,23 +650,18 @@ let tickTimer = null;
 // Under Tauri this is a plain native connect — no chooser, no permission
 // backend. In a browser it needs getDevices(), which is flag-gated.
 async function autoConnect() {
-  setState(TM.isTauri ? 'scanning…' : 'reconnecting…');
-  say(TM.isTauri ? 'Looking for the treadmill…' : '', '');
+  setState('scanning…');
+  say('Looking for the treadmill…', '');
   try { audioCtx ??= new AudioContext(); } catch { /* needs a gesture, fine */ }
   try {
     await setUp(await TM.autoConnect());
   } catch (e) {
-    const msg = errText(e);
     setState('disconnected', 'err');
-    log(`auto-connect failed: ${msg}`);
+    log(`auto-connect failed: ${errText(e)}`);
 
     // No remembered device yet (or it's gone): look for it by name, and fall
     // back to the full list if that's not conclusive.
-    if (TM.canScan) return findOrPick();
-
-    say(msg === 'no-getdevices'
-      ? 'Press Connect. (Silent reconnect needs chrome://flags/#enable-web-bluetooth-new-permissions-backend)'
-      : `${msg} — press Connect to retry.`, 'err');
+    return findOrPick();
   }
 }
 
@@ -775,7 +770,7 @@ async function connect() {
   try { audioCtx ??= new AudioContext(); } catch { /* no audio, banner only */ }
 
   // With native BLE, Connect means "show me what's out there".
-  if (TM.canScan) return showPicker();
+  return showPicker();
 
   $('connect').disabled = true;
   setState('connecting…');
@@ -834,7 +829,6 @@ function onDisconnected() {
 
 $('connect').addEventListener('click', connect);
 $('pick').addEventListener('click', showPicker);
-$('pick').hidden = !TM.canScan;
 $('picker-rescan').addEventListener('click', rescan);
 $('picker-close').addEventListener('click', () => { $('picker').hidden = true; });
 // Stop ends the session, so clear the walk clock without waiting for the
@@ -930,7 +924,7 @@ $('unit-toggle').addEventListener('click', () => {
 addEventListener('pagehide', saveSession);
 document.addEventListener('visibilitychange', saveSession);
 
-log(TM.isTauri ? 'transport: native BLE (btleplug)' : 'transport: Web Bluetooth');
+log('transport: native BLE (btleplug)');
 applyMode(mode, { persist: false });
 applyTheme();
 rollDay();
@@ -952,10 +946,5 @@ TM.on('control', onControlResponse);
 TM.on('disconnected', onDisconnected);
 TM.on('error', m => { log(`ble error: ${m}`); say(m, 'err'); });
 
-if (!TM.isTauri && !navigator.bluetooth) {
-  say('Web Bluetooth unavailable. Use desktop Chrome or Edge over http://localhost.', 'err');
-  $('connect').disabled = true;
-} else {
-  restoreSession();
-  autoConnect();
-}
+restoreSession();
+autoConnect();
