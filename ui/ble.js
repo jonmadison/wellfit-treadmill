@@ -44,6 +44,7 @@ const TM = (() => {
     scan: (secs = 6) => invoke('scan_devices', { secs }),
     write: bytes => invoke('write_control', { data: [...bytes] }),
     disconnect: () => invoke('disconnect'),
+    isConnected: () => invoke('is_connected'),
 
     // Reconnects straight to the remembered device — native BLE needs no chooser.
     autoConnect: () => {

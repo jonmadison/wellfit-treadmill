@@ -9,6 +9,7 @@
   --red: #d13b3b;
   --red-hover: #e04a4a;
   --green: #3fa66a;
+  --green-hover: #4bb87a;
   --btn: #232830;
   --btn-hover: #2c323c;
   --pill: #262c34;
@@ -34,6 +35,7 @@ body.light {
   --red: #c32f2f;
   --red-hover: #d94040;
   --green: #1f7a4d;
+  --green-hover: #268f5b;
   --btn: #eceff3;
   --btn-hover: #dfe4ea;
   --pill: #e6eaef;
@@ -214,6 +216,11 @@ button.tiny:hover { color: var(--text); background: none; }
   color: #fff; font-weight: 600; letter-spacing: .08em; padding: 13px; font-size: 13.5px;
 }
 .controls .stop:hover:not(:disabled) { background: var(--red-hover); }
+.controls .go, .pb-controls .go {
+  background: var(--green); border-color: var(--green); color: #fff;
+}
+.controls .go:hover:not(:disabled),
+.pb-controls .go:hover:not(:disabled) { background: var(--green-hover); }
 
 .msg { min-height: 14px; margin: 4px 0; font-size: 11px; color: var(--dim); }
 .msg.err { color: var(--err-fg); }

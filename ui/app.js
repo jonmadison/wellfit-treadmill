@@ -48,6 +48,35 @@ let lastPayloadAt = 0;
 // Ignore run-inference until it settles or we'd bank the deceleration.
 let ignoreRunUntil = 0;
 let sessionEnded = true;  // next Start begins a fresh walk
+let connWatch = null;     // periodic connection check
+
+// Connect is meaningless while a treadmill is attached, and leaving it live
+// invites a second connection attempt. The device button still switches units.
+function setConnected(on) {
+  connected = on;
+  $('connect').disabled = on;
+  $('connect').title = on ? 'Already connected' : 'Find and connect to a treadmill';
+}
+
+// The disconnect event is the primary signal, but a link can drop without one
+// (adapter reset, treadmill powered off mid-session). Polling the Rust side
+// keeps the button and the status pill honest.
+const CONN_POLL_MS = 15000;
+
+function watchConnection() {
+  clearInterval(connWatch);
+  connWatch = setInterval(async () => {
+    if (!connected) return;
+    try {
+      if (!await TM.isConnected()) {
+        log('connection check: link is down');
+        onDisconnected();
+      }
+    } catch (e) {
+      log(`connection check failed: ${errText(e)}`);
+    }
+  }, CONN_POLL_MS);
+}
 
 // --- logging / status -----------------------------------------------------
 
@@ -771,23 +800,11 @@ async function connect() {
 
   // With native BLE, Connect means "show me what's out there".
   return showPicker();
-
-  $('connect').disabled = true;
-  setState('connecting…');
-  try {
-    await setUp(await TM.connect());
-  } catch (e) {
-    const msg = errText(e);
-    setState('disconnected', 'err');
-    say(e.name === 'NotFoundError' ? 'No device selected.' : msg, 'err');
-    log(`connect failed: ${msg}`);
-  } finally {
-    $('connect').disabled = false;
-  }
 }
 
 async function setUp(info) {
-  connected = true;
+  setConnected(true);
+  watchConnection();
   speedRange = info.speedRange;
   log(`${info.name}: speed ${speedRange.min}–${speedRange.max} km/h step ${speedRange.step}`);
 
@@ -813,7 +830,7 @@ async function setUp(info) {
 }
 
 function onDisconnected() {
-  connected = false;
+  setConnected(false);
   isRunning = false;
   lastTick = null;
   pending?.resolve({ ok: false, reason: 'timeout' });
@@ -927,6 +944,7 @@ document.addEventListener('visibilitychange', saveSession);
 log('transport: native BLE (btleplug)');
 applyMode(mode, { persist: false });
 applyTheme();
+setConnected(false);
 rollDay();
 renderOdo();
 
