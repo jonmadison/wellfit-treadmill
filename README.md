@@ -1,68 +1,74 @@
 # WELLFIT TM treadmill control
 
 A small always-on-top macOS app to drive a WELLFIT TM walking pad over
-Bluetooth using FTMS (Fitness Machine Service, `0x1826`). Personal tool: plain
-JS frontend, Rust BLE, no framework, no bundler.
+Bluetooth using FTMS (Fitness Machine Service, `0x1826`). Plain JS frontend,
+native BLE through btleplug, Tauri for the window.
 
-Desktop only: BLE runs natively through btleplug, because WKWebView — and so
-Tauri on macOS — has no Web Bluetooth API.
+Start, pause and stop the belt, set target speed, track walk time against a
+goal, and keep running totals.
 
 ## Install (macOS)
 
-Needs [Rust](https://rustup.rs). No Node, no `tauri-cli`.
+Needs [Rust](https://rustup.rs).
 
 ```bash
 git clone <this repo> && cd wellfit
 ./install.sh
 ```
 
-That builds an optimized bundle and copies it to `/Applications`. Launch
-**WELLFIT TM** from Spotlight. Grant Bluetooth access when macOS asks — without
-it the scan silently finds nothing.
+Builds an optimized bundle and copies it to `/Applications`. Launch **WELLFIT
+TM** from Spotlight and grant Bluetooth access when macOS asks; the scan
+depends on it.
 
 Install elsewhere with `./install.sh ~/Applications`.
 
-The app is ad-hoc signed, not notarized. If Gatekeeper objects, right-click →
-**Open** once, or `xattr -dr com.apple.quarantine "/Applications/WELLFIT TM.app"`.
+The app is ad-hoc signed. If Gatekeeper objects, right-click → **Open** once,
+or `xattr -dr com.apple.quarantine "/Applications/WELLFIT TM.app"`.
+
+macOS re-asks for Bluetooth access after each rebuild, because the permission
+is tied to the signed binary.
 
 ## Use
 
-1. **Connect.** First launch scans for 6 s and looks for a device advertising
-   `WELLFIT`/`TM` or FTMS. One clear match connects automatically; anything
-   ambiguous shows a list of everything nearby, likely candidates first. Your
-   pick is remembered by device id, so later launches connect silently.
-   The **device** button reopens the list to switch treadmills.
+1. **Connect.** Scans for 6 s and looks for a device advertising `WELLFIT`/`TM`
+   or FTMS. A single clear match connects automatically; anything ambiguous
+   shows a list of everything nearby, likely candidates first. Your pick is
+   remembered by device id, so later launches connect silently. The **device**
+   button reopens the list to switch treadmills.
 2. **Get on the belt**, then press **Start**.
-3. **Adjust speed** with `+` / `–` (0.1 per press). Toggle km/h ↔ mph.
-4. **Walk goal** (optional): set minutes before you start. When you hit it the
-   app chirps and shows a banner — it never stops the belt for you.
-5. **Stop** is always enabled, even if a command errors or control is refused.
-   Stop ends the walk and clears the walk clock; **Pause** keeps it.
+3. **Adjust speed** with `+` / `–`, 0.1 per press. Toggle km/h ↔ mph.
+4. **Walk goal** (optional): set minutes before you start. On reaching it the
+   app chirps and shows a banner; stopping stays your call.
+5. **Stop** ends the walk and clears the walk clock. **Pause** keeps it, so
+   resuming continues the same walk.
+
+Stop stays enabled whenever the app is connected, including after a failed
+command.
 
 ### Two window modes
 
-**compact** shrinks to a floating strip — walk clock, goal remaining, speed
-steppers, small transport buttons — which stays on top of other windows. Drag
-it by its background; click the time or `↗` to expand. **expand** returns to
-the full window, which is not pinned on top. The choice persists.
+**compact** is a floating strip — walk clock, goal remaining, speed steppers,
+transport buttons — that stays above other windows. Drag it by its background;
+click the time or `↗` to expand. **expand** is the full window, which sits
+behind whatever you're working in. The mode carries across launches.
 
 ### Odometers
 
 Four tiers over the same walking time:
 
-| | Resets |
+| | Resets on |
 |---|---|
 | This walk | Stop |
 | Today | local midnight |
-| Trip | the `↻` button only |
-| All time | never automatically |
+| Trip | the `↻` button |
+| All time | a manual clear |
 
-Stored in the webview's localStorage, so they're per-install — reinstalling to
-a different path or clearing app data starts them over.
+Totals live in the webview's localStorage, so they follow the install:
+reinstalling to a different path or clearing app data starts them over.
 
 ### Light mode
 
-**View → Light Mode** in the menu bar. Nothing in the interface toggles it.
+**View → Light Mode** in the menu bar.
 
 ## Development
 
@@ -70,51 +76,49 @@ a different path or clearing app data starts them over.
 ./run-dev.sh     # debug build + launch
 ```
 
-The frontend in `ui/` is **embedded into the binary at compile time**, so
-editing HTML/CSS/JS does nothing until you rerun this. Incremental builds are
-a few seconds. Webview devtools: right-click → Inspect Element.
-
-### Layout
+`ui/` is embedded into the binary at compile time, so HTML/CSS/JS changes take
+effect on the next `run-dev.sh`. Incremental builds take a few seconds. For
+webview devtools, right-click → Inspect Element.
 
 | Path | Purpose |
 |---|---|
 | `ui/index.html`, `app.js`, `app.css` | UI, FTMS decoding, walk timer |
 | `ui/ble.js` | Transport: Tauri commands and events over the Rust BLE layer |
 | `src-tauri/src/ble.rs` | BLE via btleplug: scan, connect, notification pump |
-| `src-tauri/src/main.rs` | Tauri commands |
-| `bundle.sh` | Builds the `.app`; used by both scripts |
+| `src-tauri/src/main.rs` | Tauri commands and menu |
+| `bundle.sh` | Builds the `.app`; used by `run-dev.sh` and `install.sh` |
 
-## This treadmill's quirks
+## Device notes
 
-Everything here came from probing the actual unit, not from the spec. A
-different treadmill will differ — the notes below are why the code looks the
-way it does.
+How this unit behaves over FTMS. Another treadmill will differ.
 
-- **Speed grid is imperial.** `0x2AD4` reports 0.96–6.11 km/h with a 0.32 km/h
-  minimum increment — that's 0.6–3.8 mph in 0.2 steps. Targets are sent at the
-  0.01 km/h wire resolution and stepped 0.1 per press in whichever unit is
-  displayed; if the treadmill quantizes to its own grid, the app says so.
-- **Incline and resistance are fiction.** The feature bitfield claims both, but
-  `0x2AD5` and `0x2AD6` read as zeros and incline is a manual mechanical
-  adjustment. No incline control, deliberately.
-- **Idle telemetry lies.** While stopped it repeats a byte-identical packet with
-  a stale speed (~1.01 km/h) and frozen elapsed time. Run state therefore comes
-  from Fitness Machine Status (`0x2ADA`) plus change-detection on the telemetry
-  feed — never from reported speed.
-- **Reserved flag bit.** Treadmill Data sets bit 13, which the spec reserves,
-  and appends 3 unexplained trailing bytes. Spec fields are decoded, tail
-  ignored.
-- **Vendor services alongside FTMS:** `F8C0`, `FFF0`, `AE00`, a Telink OTA
-  service, and `59554C55-…-4D4552414348` (ASCII `YULU`/`MERACH`). Unused — FTMS
-  is sufficient here, but `FFF0` is where to look if FTMS writes ever stop
-  working.
+- **Speed range is imperial underneath.** `0x2AD4` reports 0.96–6.11 km/h with
+  a 0.32 km/h minimum increment: 0.6–3.8 mph in 0.2 steps. Targets go out at
+  the 0.01 km/h wire resolution, stepped 0.1 per press in the displayed unit.
+  The app reports it when the treadmill rounds a target to its own grid.
+- **Incline and resistance are unavailable.** The feature bitfield advertises
+  both, while `0x2AD5` and `0x2AD6` read as zeros; incline is a manual
+  mechanical adjustment on this model.
+- **Idle telemetry is stale.** While stopped, the unit repeats a
+  byte-identical packet holding a speed of ~1.01 km/h and a frozen elapsed
+  time. Run state comes from Fitness Machine Status (`0x2ADA`) together with
+  change-detection on the telemetry feed. The belt also coasts for several
+  seconds after a stop, during which telemetry keeps changing.
+- **Treadmill Data sets reserved flag bit 13** and appends 3 undocumented
+  trailing bytes. The app decodes the spec fields and ignores the tail.
+- **Scanning matches the advertisement only.** `0x1826` appears after
+  connecting, so CoreBluetooth service filters miss this device.
 - **Control point** accepts Request Control (`0x00`) and replies `80 00 01`
   (Success). Commands are serialized one at a time and matched to their
-  indication by opcode; losing control permission re-requests it automatically.
+  indication by opcode; lost control permission is re-requested automatically.
+- **Vendor services alongside FTMS:** `F8C0`, `FFF0`, `AE00`, a Telink OTA
+  service, and `59554C55-…-4D4552414348` (ASCII `YULU`/`MERACH`). FTMS covers
+  everything the app needs; `FFF0` is where to look if FTMS writes stop
+  working.
 
 ## Safety
 
 The belt responds immediately. Be on it before pressing Start or changing
-speed, and never send commands from across the room. Stop stays enabled at all
-times, including when a command has failed. If the app disconnects, the
-treadmill keeps running — use its own panel.
+speed, and send commands only from on the belt. Stop stays enabled at all
+times, including after a failed command. If the app disconnects the treadmill
+keeps running — use its own panel.
