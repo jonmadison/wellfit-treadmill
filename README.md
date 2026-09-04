@@ -36,8 +36,32 @@ The app is ad-hoc signed, not notarized. If Gatekeeper objects, right-click →
 4. **Walk goal** (optional): set minutes before you start. When you hit it the
    app chirps and shows a banner — it never stops the belt for you.
 5. **Stop** is always enabled, even if a command errors or control is refused.
+   Stop ends the walk and clears the walk clock; **Pause** keeps it.
 
-Window is always-on-top so it stays visible over other apps while you walk.
+### Two window modes
+
+**compact** shrinks to a floating strip — walk clock, goal remaining, speed
+steppers, small transport buttons — which stays on top of other windows. Drag
+it by its background; click the time or `↗` to expand. **expand** returns to
+the full window, which is not pinned on top. The choice persists.
+
+### Odometers
+
+Four tiers over the same walking time:
+
+| | Resets |
+|---|---|
+| This walk | Stop |
+| Today | local midnight |
+| Trip | the `↻` button only |
+| All time | never automatically |
+
+Stored in the webview's localStorage, so they're per-install — reinstalling to
+a different path or clearing app data starts them over.
+
+### Light mode
+
+**View → Light Mode** in the menu bar. Nothing in the interface toggles it.
 
 ## Development
 

@@ -7,10 +7,53 @@
   --dim: #9aa3ad;
   --blue: #2f6feb;
   --red: #d13b3b;
+  --red-hover: #e04a4a;
   --green: #3fa66a;
+  --btn: #232830;
+  --btn-hover: #2c323c;
+  --pill: #262c34;
+  --ok-bg: #1d3a2a;
+  --ok-bg-pulse: #26543a;
+  --ok-fg: #7ddba3;
+  --err-bg: #3a1f1f;
+  --err-fg: #f0a3a3;
+  --warn-line: #e0a33e;
+  --warn-bg: #26221a;
+  --warn-fg: #f0d9a8;
+}
+
+/* Toggled from the View > Light Mode menu item. */
+body.light {
+  color-scheme: light;
+  --bg: #f2f4f7;
+  --panel: #ffffff;
+  --line: #d5dae1;
+  --text: #171a1f;
+  --dim: #5c6875;
+  --blue: #1f5fd0;
+  --red: #c32f2f;
+  --red-hover: #d94040;
+  --green: #1f7a4d;
+  --btn: #eceff3;
+  --btn-hover: #dfe4ea;
+  --pill: #e6eaef;
+  --ok-bg: #dff3e6;
+  --ok-bg-pulse: #c3e9d2;
+  --ok-fg: #1c6b41;
+  --err-bg: #fbe3e3;
+  --err-fg: #a32020;
+  --warn-line: #c98a1e;
+  --warn-bg: #fdf4e0;
+  --warn-fg: #6b4e0d;
 }
 
 * { box-sizing: border-box; }
+
+/* No scrollbars anywhere: this is a fixed-size utility window, and a scrollbar
+   gutter steals width from an already narrow layout. Content still scrolls by
+   wheel/trackpad where it overflows (the log). */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 /* Author rules that set `display` (.metric, .goal-alert) beat the UA
    stylesheet's [hidden] rule, which would leave hidden elements visible. */
@@ -22,7 +65,8 @@
 .mode-player #full,
 .mode-player header { display: none; }
 .mode-full .player-bar { display: none; }
-.mode-player { padding: 6px; }
+.mode-player { padding: 6px; overflow: hidden; }
+.mode-player .player-bar { flex-wrap: nowrap; }
 
 .player-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -45,7 +89,7 @@
   display: flex; align-items: center; justify-content: center;
 }
 .pb-controls .stop { background: var(--red); border-color: var(--red); color: #fff; }
-.pb-controls .stop:hover:not(:disabled) { background: #e04a4a; }
+.pb-controls .stop:hover:not(:disabled) { background: var(--red-hover); }
 
 /* Drag the strip by its background, since it has no titlebar of its own. */
 .mode-player .player-bar { -webkit-app-region: drag; }
@@ -70,17 +114,17 @@ h1 { font-size: 12px; margin: 0; letter-spacing: .04em; color: var(--dim); text-
 
 .pill {
   font-size: 10px; padding: 2px 7px; border-radius: 999px;
-  background: #262c34; color: var(--dim); white-space: nowrap;
+  background: var(--pill); color: var(--dim); white-space: nowrap;
 }
-.pill.on { background: #1d3a2a; color: #7ddba3; }
-.pill.err { background: #3a1f1f; color: #f0a3a3; }
+.pill.on { background: var(--ok-bg); color: var(--ok-fg); }
+.pill.err { background: var(--err-bg); color: var(--err-fg); }
 
 button {
   font: inherit; padding: 6px 11px; border-radius: 6px;
-  border: 1px solid var(--line); background: #232830; color: var(--text);
+  border: 1px solid var(--line); background: var(--btn); color: var(--text);
   cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
-button:hover:not(:disabled) { background: #2c323c; }
+button:hover:not(:disabled) { background: var(--btn-hover); }
 button:disabled { opacity: .35; cursor: default; }
 button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
 button.ghost { background: none; border: none; color: var(--dim); font-size: 11px; padding: 3px 5px; }
@@ -88,10 +132,10 @@ button.ghost:hover { color: var(--text); background: none; }
 
 .safety {
   display: flex; align-items: flex-start; gap: 6px;
-  border-left: 2px solid #e0a33e; background: #26221a;
-  padding: 6px 9px; margin: 8px 0; font-size: 10.5px; line-height: 1.35; color: #f0d9a8;
+  border-left: 2px solid var(--warn-line); background: var(--warn-bg);
+  padding: 6px 9px; margin: 8px 0; font-size: 10.5px; line-height: 1.35; color: var(--warn-fg);
 }
-.safety button { color: #f0d9a8; flex: none; }
+.safety button { color: var(--warn-fg); flex: none; }
 
 .metrics {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 8px 0;
@@ -103,8 +147,21 @@ button.ghost:hover { color: var(--text); background: none; }
 .metric.big { grid-column: 1 / -1; }
 .metric .label { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: .07em; }
 .metric .value { font-size: 17px; font-variant-numeric: tabular-nums; line-height: 1.15; }
-/* Time walked is the headline number: it's what the goal is measured against. */
-.metric.big .value { font-size: 38px; }
+/* Still the headline number, but sharing the panel with the odometers. */
+.metric.big .value { font-size: 30px; }
+
+.odo {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  margin-top: 4px; padding-top: 5px; border-top: 1px solid var(--line);
+}
+.odo-item { display: flex; align-items: baseline; gap: 4px; }
+.odo-label { font-size: 8.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+.odo-val { font-size: 11px; font-variant-numeric: tabular-nums; }
+button.tiny {
+  padding: 0 3px; font-size: 10px; line-height: 1.4;
+  background: none; border: none; color: var(--dim);
+}
+button.tiny:hover { color: var(--text); background: none; }
 .metric .unit { font-size: 9.5px; color: var(--dim); }
 
 .speed { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 8px 9px; }
@@ -131,23 +188,23 @@ button.ghost:hover { color: var(--text); background: none; }
 }
 .picker-list .dev-name { font-size: 12px; }
 .picker-list .dev-meta { font-size: 9.5px; color: var(--dim); white-space: nowrap; }
-.picker-list .ftms { color: #7ddba3; }
+.picker-list .ftms { color: var(--ok-fg); }
 .picker-empty { font-size: 10.5px; color: var(--dim); padding: 4px 0; }
 
 .goal {
   background: var(--panel); border: 1px solid var(--line);
-  border-radius: 7px; padding: 8px 9px; margin-top: 6px;
+  border-radius: 7px; padding: 8px 9px; margin: 6px 0 14px;
 }
 .goal.done { border-color: var(--green); }
 
 .goal-alert {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   margin: 8px 0 0; padding: 8px 10px; border-radius: 7px;
-  background: #1d3a2a; border: 1px solid var(--green); color: #b6f0cd;
+  background: var(--ok-bg); border: 1px solid var(--green); color: var(--ok-fg);
   font-size: 11.5px; animation: pulse 1.4s ease-in-out infinite;
 }
-.goal-alert button { color: #b6f0cd; }
-@keyframes pulse { 0%, 100% { background: #1d3a2a; } 50% { background: #26543a; } }
+.goal-alert button { color: var(--ok-fg); }
+@keyframes pulse { 0%, 100% { background: var(--ok-bg); } 50% { background: var(--ok-bg-pulse); } }
 
 .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
 .controls button { padding: 9px; font-size: 12.5px; }
@@ -156,11 +213,11 @@ button.ghost:hover { color: var(--text); background: none; }
   grid-column: 1 / -1; background: var(--red); border-color: var(--red);
   color: #fff; font-weight: 600; letter-spacing: .08em; padding: 13px; font-size: 13.5px;
 }
-.controls .stop:hover:not(:disabled) { background: #e04a4a; }
+.controls .stop:hover:not(:disabled) { background: var(--red-hover); }
 
 .msg { min-height: 14px; margin: 4px 0; font-size: 11px; color: var(--dim); }
-.msg.err { color: #f0a3a3; }
-.msg.ok { color: #7ddba3; }
+.msg.err { color: var(--err-fg); }
+.msg.ok { color: var(--ok-fg); }
 
 .log-wrap { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 7px; }
 .log-wrap summary { cursor: pointer; font-size: 10.5px; color: var(--dim); }

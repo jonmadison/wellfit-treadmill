@@ -62,8 +62,23 @@
   <!-- Time and goal lead: the walk is the thing being tracked. -->
   <section class="metrics">
     <div class="metric big">
-      <span class="label">Time walked</span>
+      <span class="label">This walk</span>
       <span class="value" id="m-time">0:00</span>
+      <div class="odo">
+        <span class="odo-item">
+          <span class="odo-label">Today</span>
+          <span class="odo-val" id="m-today">0m</span>
+        </span>
+        <span class="odo-item">
+          <span class="odo-label">Trip</span>
+          <span class="odo-val" id="m-trip">0m</span>
+          <button id="trip-reset" class="tiny" title="Reset trip odometer">&#8635;</button>
+        </span>
+        <span class="odo-item">
+          <span class="odo-label">All time</span>
+          <span class="odo-val" id="m-total">0m</span>
+        </span>
+      </div>
     </div>
   </section>
 

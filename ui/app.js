@@ -44,6 +44,10 @@ let isRunning = false;   // from Fitness Machine Status, never inferred from spe
 let deviceElapsed = null; // treadmill's own elapsed seconds
 let lastPayload = null;   // last telemetry packet, to detect a frozen (idle) feed
 let lastPayloadAt = 0;
+// After a Stop the belt coasts, and that coasting still changes the telemetry.
+// Ignore run-inference until it settles or we'd bank the deceleration.
+let ignoreRunUntil = 0;
+let sessionEnded = true;  // next Start begins a fresh walk
 
 // --- logging / status -----------------------------------------------------
 
@@ -190,7 +194,7 @@ function onData(dv) {
   if (raw !== lastPayload) {
     lastPayload = raw;
     lastPayloadAt = Date.now();
-    if (!isRunning) {
+    if (!isRunning && Date.now() >= ignoreRunUntil) {
       isRunning = true;
       setState('running', 'on');
       log('running (inferred from changing telemetry)');
@@ -343,6 +347,7 @@ function showTime() {
   const t = fmtTime(Math.floor(walkedSec));
   $('m-time').textContent = t;
   $('p-time').textContent = t;
+  renderOdo();
 }
 
 function renderGoal() {
@@ -376,6 +381,10 @@ function renderGoal() {
 function tick() {
   const now = Date.now();
 
+  // Checked every tick, not just while walking: the window is often left open
+  // overnight, and "Today" would otherwise show yesterday until the next walk.
+  if (rollDay()) renderOdo();
+
   // Telemetry frozen for several seconds means the belt isn't moving, whatever
   // the last status event claimed.
   if (isRunning && lastPayloadAt && now - lastPayloadAt > 4000) {
@@ -386,13 +395,14 @@ function tick() {
 
   if (isRunning) {
     walkStarted = true;
-    if (lastTick !== null) walkedSec += (now - lastTick) / 1000;
+    if (lastTick !== null) addWalkTime((now - lastTick) / 1000);
     showTime();
     if (goalMin && !goalHit && walkedSec >= goalMin * 60) reachGoal();
   }
   lastTick = isRunning ? now : null;
   if (goalMin) renderGoal();
   saveSession();
+  saveOdo();
 }
 
 // Alert only. Stopping stays a deliberate manual action so an unattended
@@ -431,6 +441,7 @@ function resetWalk() {
   walkStarted = false;
   lastTick = null;
   syncedFromDevice = false;
+  allowDeviceSync = false;
   localStorage.removeItem(SAVE_KEY);
   showTime();
   $('goal-alert').hidden = true;
@@ -448,7 +459,7 @@ function resetWalk() {
 // Heights are window heights, which on macOS include the titlebar — hence the
 // headroom over the strip's own ~46px. fitHeight() corrects any shortfall.
 const SIZES = {
-  player: { w: 330, h: 96 },
+  player: { w: 430, h: 96 },
   full:   { w: 380, h: 900 },
 };
 
@@ -471,7 +482,7 @@ async function applyMode(next, { persist = true } = {}) {
     await w.setSize(new LogicalSize(width, height));
     // The strip is meant to float over other apps; the full window isn't.
     await w.setAlwaysOnTop(mode === 'player');
-    if (mode === 'player') await fitHeight(w, LogicalSize, width, height);
+    if (mode === 'player') await fitStrip(w, LogicalSize, width, height);
   } catch (e) {
     log(`window resize failed: ${errText(e)}`);
   }
@@ -479,14 +490,87 @@ async function applyMode(next, { persist = true } = {}) {
 
 // Whether setSize counts the titlebar varies by platform, so rather than
 // guessing, measure what the content actually got and grow if it was clipped.
-async function fitHeight(w, LogicalSize, width, height) {
+async function fitStrip(w, LogicalSize, width, height) {
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  const need = $('player-bar').getBoundingClientRect().height + 14;
-  const short = Math.ceil(need - window.innerHeight);
-  if (short > 0) {
-    log(`player strip clipped by ${short}px, growing window`);
-    await w.setSize(new LogicalSize(width, height + short));
+  const bar = $('player-bar');
+  const shortH = Math.ceil(bar.getBoundingClientRect().height + 14 - window.innerHeight);
+  const shortW = Math.ceil(bar.scrollWidth + 14 - window.innerWidth);
+  if (shortH > 0 || shortW > 0) {
+    log(`player strip clipped (${shortW}x${shortH}px), growing window`);
+    await w.setSize(new LogicalSize(
+      width + Math.max(0, shortW),
+      height + Math.max(0, shortH)));
   }
+}
+
+// --- odometers ------------------------------------------------------------
+
+// Three tiers over the same walking time:
+//   walkedSec  this walk, cleared by Stop
+//   tripSec    manual odometer, cleared only by the reset button
+//   todaySec   rolls over at local midnight
+//   totalSec   all time, never cleared automatically
+const num = v => Number(v) || 0;
+const dayKey = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
+
+let tripSec = num(localStorage.getItem('tm-trip-sec'));
+let totalSec = num(localStorage.getItem('tm-total-sec'));
+let todaySec = num(localStorage.getItem('tm-today-sec'));
+let todayOn = localStorage.getItem('tm-today-date') || dayKey();
+
+// Compact for long spans: "1h 20m" reads better than "80:12" on an odometer.
+function fmtOdo(seconds) {
+  const t = Math.max(0, Math.round(seconds));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+function saveOdo() {
+  localStorage.setItem('tm-trip-sec', String(Math.round(tripSec)));
+  localStorage.setItem('tm-total-sec', String(Math.round(totalSec)));
+  localStorage.setItem('tm-today-sec', String(Math.round(todaySec)));
+  localStorage.setItem('tm-today-date', todayOn);
+}
+
+// Every counter advances from the same delta, so they can't drift apart.
+function addWalkTime(deltaSec) {
+  if (!(deltaSec > 0)) return;
+  rollDay();
+  walkedSec += deltaSec;
+  tripSec += deltaSec;
+  todaySec += deltaSec;
+  totalSec += deltaSec;
+}
+
+// Returns true if the day actually rolled, so callers can re-render.
+function rollDay() {
+  const today = dayKey();
+  if (todayOn === today) return false;
+  log(`new day (${today}): today's total reset`);
+  todayOn = today;
+  todaySec = 0;
+  return true;
+}
+
+function renderOdo() {
+  $('m-today').textContent = fmtOdo(todaySec);
+  $('m-trip').textContent = fmtOdo(tripSec);
+  $('m-total').textContent = fmtOdo(totalSec);
+}
+
+// --- theme ----------------------------------------------------------------
+
+// Toggled from the native View > Light Mode menu item, which emits
+// `ui:toggle-light`. Nothing in the interface controls this.
+let light = localStorage.getItem('tm-light') === '1';
+
+function applyTheme() {
+  document.body.classList.toggle('light', light);
+  localStorage.setItem('tm-light', light ? '1' : '0');
+  // Keep the menu checkmark in step with the restored preference.
+  window.__TAURI__?.core?.invoke('set_light_checked', { checked: light })
+    .catch(e => log(`menu sync failed: ${errText(e)}`));
 }
 
 // --- session persistence --------------------------------------------------
@@ -523,10 +607,12 @@ function restoreSession() {
   walkedSec = s.walkedSec ?? 0;
   goalHit = !!s.goalHit;
   walkStarted = true;
+  sessionEnded = false;
+  allowDeviceSync = true;
 
   // Assume the belt kept moving while the page was gone.
   const gapSec = (Date.now() - s.savedAt) / 1000;
-  walkedSec += gapSec;
+  addWalkTime(gapSec);
   log(`restored mid-walk, credited ${Math.round(gapSec)}s gap`);
 
   if (goalHit) reachGoal();
@@ -537,12 +623,19 @@ function restoreSession() {
 // The treadmill's elapsed field is the real session clock, so once we can see
 // it advancing we trust it over our reconstruction.
 let syncedFromDevice = false;
+// Only trusted when recovering a walk that was already in progress. After a
+// local Start the device's elapsed field may still hold its previous session,
+// which would undo the reset.
+let allowDeviceSync = false;
 function syncFromDevice() {
-  if (syncedFromDevice || deviceElapsed === null || !isRunning) return;
+  if (!allowDeviceSync || syncedFromDevice || deviceElapsed === null || !isRunning) return;
   syncedFromDevice = true;
   const drift = deviceElapsed - walkedSec;
   if (Math.abs(drift) > 5) {
     log(`walk time ${fmtTime(Math.floor(walkedSec))} -> treadmill says ${fmtTime(deviceElapsed)}`);
+    // The session clock is set absolutely here, so credit the same correction
+    // to the odometers by hand or they'd fall behind it.
+    if (drift > 0) { tripSec += drift; todaySec += drift; totalSec += drift; }
     walkedSec = deviceElapsed;
     showTime();
     if (goalMin && !goalHit && walkedSec >= goalMin * 60) reachGoal();
@@ -709,7 +802,6 @@ async function setUp(info) {
   $('speed-ctl').hidden = false;
   $('goal-ctl').hidden = false;
   renderTarget();
-  if (!tickTimer) tickTimer = setInterval(tick, 1000);
   renderGoal();
 
   if (await command(OP.requestControl, [], 'Request control')) {
@@ -745,17 +837,48 @@ $('pick').addEventListener('click', showPicker);
 $('pick').hidden = !TM.canScan;
 $('picker-rescan').addEventListener('click', rescan);
 $('picker-close').addEventListener('click', () => { $('picker').hidden = true; });
-$('start').addEventListener('click', () => command(OP.start, [], 'Start'));
-$('pause').addEventListener('click', () => command(OP.stopPause, [0x02], 'Pause'));
-$('stop').addEventListener('click', () => command(OP.stopPause, [0x01], 'Stop'));
+// Stop ends the session, so clear the walk clock without waiting for the
+// treadmill's status event — it doesn't always send one.
+async function stopWalk() {
+  if (!await command(OP.stopPause, [0x01], 'Stop')) return;
+  isRunning = false;
+  lastTick = null;
+  ignoreRunUntil = Date.now() + 8000;   // ride out the coast-down
+  sessionEnded = true;
+  resetWalk();
+}
+
+// A Stop ends the walk, so the next Start is a new one. Checked here rather
+// than trusting the earlier reset to have survived the coast-down.
+async function startWalk() {
+  if (sessionEnded) resetWalk();
+  ignoreRunUntil = 0;
+  if (await command(OP.start, [], 'Start')) sessionEnded = false;
+}
+
+async function pauseWalk() {
+  // Pause keeps the session, so nothing is cleared here.
+  if (await command(OP.stopPause, [0x02], 'Pause')) ignoreRunUntil = Date.now() + 8000;
+}
+
+$('start').addEventListener('click', startWalk);
+$('pause').addEventListener('click', pauseWalk);
+$('stop').addEventListener('click', stopWalk);
+
+$('trip-reset').addEventListener('click', () => {
+  tripSec = 0;
+  saveOdo();
+  renderOdo();
+  log('trip odometer reset');
+});
 
 $('speed-up').addEventListener('click', () => nudge(+1));
 $('speed-down').addEventListener('click', () => nudge(-1));
 
 // Player strip: same handlers, smaller buttons.
-$('p-start').addEventListener('click', () => command(OP.start, [], 'Start'));
-$('p-pause').addEventListener('click', () => command(OP.stopPause, [0x02], 'Pause'));
-$('p-stop').addEventListener('click', () => command(OP.stopPause, [0x01], 'Stop'));
+$('p-start').addEventListener('click', startWalk);
+$('p-pause').addEventListener('click', pauseWalk);
+$('p-stop').addEventListener('click', stopWalk);
 $('p-up').addEventListener('click', () => nudge(+1));
 $('p-down').addEventListener('click', () => nudge(-1));
 
@@ -809,6 +932,19 @@ document.addEventListener('visibilitychange', saveSession);
 
 log(TM.isTauri ? 'transport: native BLE (btleplug)' : 'transport: Web Bluetooth');
 applyMode(mode, { persist: false });
+applyTheme();
+rollDay();
+renderOdo();
+
+// Runs regardless of connection: it owns the midnight rollover, not just the
+// walk clock.
+tickTimer = setInterval(tick, 1000);
+
+window.__TAURI__?.event?.listen('ui:toggle-light', () => {
+  light = !light;
+  applyTheme();
+  log(`theme: ${light ? 'light' : 'dark'}`);
+});
 
 TM.on('data', onData);
 TM.on('status', onStatus);
